@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+
+class BaseConnector:
+    name = "base"
+
+    def health_check(self) -> dict[str, str]:
+        return {"status": "ok", "connector": self.name}
+
+
+class StravaConnector(BaseConnector):
+    name = "strava"
+
+    def fetch_activity_range(self, user_id: str) -> dict:
+        return {
+            "user_id": user_id,
+            "source": self.name,
+            "activities": [{"duration_min": 45, "rpe": 6}],
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+class GarminConnector(BaseConnector):
+    name = "garmin"
+
+    def fetch_activity_range(self, user_id: str) -> dict:
+        return {
+            "user_id": user_id,
+            "source": self.name,
+            "activities": [{"duration_min": 35, "rpe": 5}],
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+class CalendarConnector(BaseConnector):
+    name = "calendar"
+
+    def fetch_calendar(self, user_id: str) -> dict:
+        return {
+            "user_id": user_id,
+            "source": self.name,
+            "busy_slots": ["2026-07-10T12:00:00Z/2026-07-10T14:00:00Z"],
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+def get_connectors() -> dict[str, BaseConnector]:
+    return {
+        "strava": StravaConnector(),
+        "garmin": GarminConnector(),
+        "calendar": CalendarConnector(),
+    }

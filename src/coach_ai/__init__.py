@@ -1,0 +1,1 @@
+"""Coach Sportif IA package."""
