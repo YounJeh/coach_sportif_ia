@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from langgraph.graph import END, StateGraph
 
@@ -26,7 +26,6 @@ def sync_node(state: CoachState) -> CoachState:
 
     state.raw_data = {
         "strava": connectors["strava"].fetch_activity_range(user_id),
-        "garmin": connectors["garmin"].fetch_activity_range(user_id),
         "calendar": connectors["calendar"].fetch_calendar(user_id),
     }
     state.decision_log.append({"agent": "sync", "message": "Data synced"})
@@ -35,7 +34,7 @@ def sync_node(state: CoachState) -> CoachState:
 
 def quality_node(state: CoachState) -> CoachState:
     source_count = len(state.raw_data)
-    freshness_bonus = 0.2 if source_count >= 3 else 0.0
+    freshness_bonus = 0.2 if source_count >= 2 else 0.0
     state.quality_score = min(1.0, 0.5 + freshness_bonus)
     state.decision_log.append(
         {
@@ -49,7 +48,7 @@ def quality_node(state: CoachState) -> CoachState:
 
 def context_node(state: CoachState) -> CoachState:
     activities = []
-    for source in ["strava", "garmin"]:
+    for source in ["strava"]:
         activities.extend(state.raw_data.get(source, {}).get("activities", []))
 
     avg_rpe = 0.0
@@ -65,22 +64,80 @@ def context_node(state: CoachState) -> CoachState:
     return state
 
 
+def _infer_modality(objective: str) -> str:
+    goal = objective.lower()
+    if any(token in goal for token in ["course", "run", "marathon", "semi", "5k", "10k"]):
+        return "running"
+    if any(token in goal for token in ["muscu", "musculation", "force", "strength", "bench", "squat"]):
+        return "strength"
+    if any(token in goal for token in ["fitness", "hiit", "cardio", "condition"]):
+        return "fitness"
+    return "fitness"
+
+
+def _build_session_title(modality: str, index: int) -> str:
+    if modality == "running":
+        return f"Running session {index}"
+    if modality == "strength":
+        return f"Strength session {index}"
+    if modality == "fitness":
+        return f"Fitness session {index}"
+    return f"Recovery session {index}"
+
+
+def _build_plan_data(modality: str, slot: str, index: int) -> dict:
+    if modality == "running":
+        workout_type = "easy" if index % 3 else "interval"
+        return {
+            "slot_hint": slot,
+            "workout_type": workout_type,
+            "alternative_short_min": 20,
+        }
+    if modality == "strength":
+        return {
+            "slot_hint": slot,
+            "focus": "full_body" if index % 2 else "upper_body",
+            "template": [
+                {"exercise": "Squat", "sets": 3, "reps": 8},
+                {"exercise": "Push-up", "sets": 3, "reps": 12},
+                {"exercise": "Row", "sets": 3, "reps": 10},
+            ],
+            "alternative_short_min": 25,
+        }
+    if modality == "fitness":
+        return {
+            "slot_hint": slot,
+            "format": "circuit",
+            "work_rest": "40/20",
+            "rounds": 6,
+            "alternative_short_min": 15,
+        }
+    return {"slot_hint": slot, "alternative_short_min": 15}
+
+
 def planning_node(state: CoachState) -> CoachState:
     base_duration = 45
     if state.context.get("avg_rpe", 0) >= 7:
         base_duration = 35
 
+    modality = _infer_modality(state.goal.objective)
     slots = state.goal.available_slots[:7]
     sessions = []
     for idx, slot in enumerate(slots, start=1):
+        session_date = date.today() + timedelta(days=idx - 1)
         sessions.append(
             {
-                "day": idx,
-                "slot": slot,
-                "type": "endurance" if idx % 3 else "interval",
+                "user_id": state.goal.user_id,
+                "goal_id": None,
+                "session_date": session_date.isoformat(),
+                "modality": modality,
+                "title": _build_session_title(modality, idx),
                 "target_duration_min": base_duration,
-                "target_intensity": "moderate",
-                "alternative_short_min": 20,
+                "target_intensity_rpe": 6.0,
+                "status": "planned",
+                "plan_data": _build_plan_data(modality, slot, idx),
+                "result_data": {},
+                "notes": None,
             }
         )
 
@@ -126,7 +183,7 @@ def briefing_node(state: CoachState) -> CoachState:
             f"Mode conservateur: {state.safety.get('conservative_mode', False)}."
         ),
         "athlete": (
-            f"Aujourd'hui: {today.get('type', 'recovery')} pendant "
+            f"Aujourd'hui: {today.get('title', 'Session recovery')} pendant "
             f"{today.get('target_duration_min', 20)} min. "
             "Option courte disponible si agenda charge."
         ),
@@ -159,5 +216,5 @@ def build_graph():
 
 def run_planning(goal: GoalInput) -> CoachState:
     app = build_graph()
-    initial_state = CoachState(goal=goal)
+    initial_state = CoachState(goal)
     return app.invoke(initial_state)
