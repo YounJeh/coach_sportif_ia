@@ -14,7 +14,7 @@ class BaseConnector:
 class StravaConnector(BaseConnector):
     name = "strava"
 
-    def fetch_activity_range(self, user_id: str) -> dict:
+    async def fetch_activity_range(self, user_id: str) -> dict:
         return {
             "user_id": user_id,
             "source": self.name,
@@ -26,7 +26,7 @@ class StravaConnector(BaseConnector):
 class CalendarConnector(BaseConnector):
     name = "calendar"
 
-    def fetch_calendar(self, user_id: str) -> dict:
+    async def fetch_calendar(self, user_id: str) -> dict:
         return {
             "user_id": user_id,
             "source": self.name,

@@ -1,220 +1,261 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+import logging
 
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, START, StateGraph
 
+from coach_ai.agents.plan_generator import generate_training_plan
+from coach_ai.agents.profile_analyzer import analyze_athlete
 from coach_ai.connectors import get_connectors
-from coach_ai.state import CoachState, GoalInput
+from coach_ai.models import GoalInput
+from coach_ai.services.plan_validator import validate_plan
+from coach_ai.state import CoachState
+
+logger = logging.getLogger(__name__)
 
 
-def intake_node(state: CoachState) -> CoachState:
-    state.decision_log.append(
-        {
-            "agent": "intake",
-            "message": "Objective captured",
-            "objective": state.goal.objective,
-            "deadline": state.goal.deadline.isoformat(),
-        }
-    )
-    return state
-
-
-def sync_node(state: CoachState) -> CoachState:
+async def sync_node(state: CoachState) -> dict:
+    goal = state["goal"]
+    logger.info("node sync start user_id=%s", goal.user_id)
     connectors = get_connectors()
-    user_id = state.goal.user_id
 
-    state.raw_data = {
-        "strava": connectors["strava"].fetch_activity_range(user_id),
-        "calendar": connectors["calendar"].fetch_calendar(user_id),
-    }
-    state.decision_log.append({"agent": "sync", "message": "Data synced"})
-    return state
+    raw_data = {}
 
+    if "strava" in connectors:
+        raw_data["strava"] = await connectors["strava"].fetch_activity_range(goal.user_id)
 
-def quality_node(state: CoachState) -> CoachState:
-    source_count = len(state.raw_data)
-    freshness_bonus = 0.2 if source_count >= 2 else 0.0
-    state.quality_score = min(1.0, 0.5 + freshness_bonus)
-    state.decision_log.append(
-        {
-            "agent": "quality",
-            "message": "Quality scored",
-            "quality_score": state.quality_score,
-        }
-    )
-    return state
+    if "calendar" in connectors:
+        raw_data["calendar"] = await connectors["calendar"].fetch_calendar(goal.user_id)
 
+    logger.info("node sync done user_id=%s sources=%s", goal.user_id, list(raw_data))
 
-def context_node(state: CoachState) -> CoachState:
-    activities = []
-    for source in ["strava"]:
-        activities.extend(state.raw_data.get(source, {}).get("activities", []))
-
-    avg_rpe = 0.0
-    if activities:
-        avg_rpe = sum(a.get("rpe", 0) for a in activities) / len(activities)
-
-    state.context = {
-        "avg_rpe": round(avg_rpe, 2),
-        "objective": state.goal.objective,
-        "days_to_deadline": max((state.goal.deadline - date.today()).days, 0),
-    }
-    state.decision_log.append({"agent": "context", "message": "Context built"})
-    return state
-
-
-def _infer_modality(objective: str) -> str:
-    goal = objective.lower()
-    if any(token in goal for token in ["course", "run", "marathon", "semi", "5k", "10k"]):
-        return "running"
-    if any(token in goal for token in ["muscu", "musculation", "force", "strength", "bench", "squat"]):
-        return "strength"
-    if any(token in goal for token in ["fitness", "hiit", "cardio", "condition"]):
-        return "fitness"
-    return "fitness"
-
-
-def _build_session_title(modality: str, index: int) -> str:
-    if modality == "running":
-        return f"Running session {index}"
-    if modality == "strength":
-        return f"Strength session {index}"
-    if modality == "fitness":
-        return f"Fitness session {index}"
-    return f"Recovery session {index}"
-
-
-def _build_plan_data(modality: str, slot: str, index: int) -> dict:
-    if modality == "running":
-        workout_type = "easy" if index % 3 else "interval"
-        return {
-            "slot_hint": slot,
-            "workout_type": workout_type,
-            "alternative_short_min": 20,
-        }
-    if modality == "strength":
-        return {
-            "slot_hint": slot,
-            "focus": "full_body" if index % 2 else "upper_body",
-            "template": [
-                {"exercise": "Squat", "sets": 3, "reps": 8},
-                {"exercise": "Push-up", "sets": 3, "reps": 12},
-                {"exercise": "Row", "sets": 3, "reps": 10},
-            ],
-            "alternative_short_min": 25,
-        }
-    if modality == "fitness":
-        return {
-            "slot_hint": slot,
-            "format": "circuit",
-            "work_rest": "40/20",
-            "rounds": 6,
-            "alternative_short_min": 15,
-        }
-    return {"slot_hint": slot, "alternative_short_min": 15}
-
-
-def planning_node(state: CoachState) -> CoachState:
-    base_duration = 45
-    if state.context.get("avg_rpe", 0) >= 7:
-        base_duration = 35
-
-    modality = _infer_modality(state.goal.objective)
-    slots = state.goal.available_slots[:7]
-    sessions = []
-    for idx, slot in enumerate(slots, start=1):
-        session_date = date.today() + timedelta(days=idx - 1)
-        sessions.append(
+    return {
+        "raw_data": raw_data,
+        "decision_log": [
+            *state.get("decision_log", []),
             {
-                "user_id": state.goal.user_id,
-                "goal_id": None,
-                "session_date": session_date.isoformat(),
-                "modality": modality,
-                "title": _build_session_title(modality, idx),
-                "target_duration_min": base_duration,
-                "target_intensity_rpe": 6.0,
-                "status": "planned",
-                "plan_data": _build_plan_data(modality, slot, idx),
-                "result_data": {},
-                "notes": None,
-            }
-        )
-
-    state.plan = {
-        "objective": state.goal.objective,
-        "deadline": state.goal.deadline.isoformat(),
-        "quality_score": state.quality_score,
-        "sessions": sessions,
-    }
-    state.decision_log.append({"agent": "planning", "message": "Plan generated"})
-    return state
-
-
-def safety_node(state: CoachState) -> CoachState:
-    conservative_mode = state.quality_score < 0.6
-    state.safety = {
-        "conservative_mode": conservative_mode,
-        "health_disclaimer": (
-            "Recommandations non medicales. En cas de douleur persistante, consultez un professionnel de sante."
-        ),
+                "agent": "sync",
+                "message": "Connected data retrieved",
+                "sources": list(raw_data),
+            },
+        ],
     }
 
-    if conservative_mode:
-        for session in state.plan.get("sessions", []):
-            session["target_duration_min"] = min(session["target_duration_min"], 30)
 
-    state.decision_log.append(
-        {
-            "agent": "safety",
-            "message": "Safety policy applied",
-            "conservative_mode": conservative_mode,
-        }
+async def profile_node(state: CoachState) -> dict:
+    logger.info("node profile start user_id=%s", state["goal"].user_id)
+    profile = await analyze_athlete(
+        goal=state["goal"],
+        raw_data=state.get("raw_data", {}),
     )
-    return state
 
+    logger.info(
+        "node profile done user_id=%s primary_sports=%s missing_info=%d",
+        state["goal"].user_id,
+        profile.primary_sports,
+        len(profile.missing_information),
+    )
 
-def briefing_node(state: CoachState) -> CoachState:
-    sessions = state.plan.get("sessions", [])
-    today = sessions[0] if sessions else {}
-    state.briefing = {
-        "coach": (
-            f"Plan genere avec score confiance {state.quality_score:.2f}. "
-            f"Mode conservateur: {state.safety.get('conservative_mode', False)}."
-        ),
-        "athlete": (
-            f"Aujourd'hui: {today.get('title', 'Session recovery')} pendant "
-            f"{today.get('target_duration_min', 20)} min. "
-            "Option courte disponible si agenda charge."
-        ),
+    return {
+        "athlete_profile": profile,
+        "decision_log": [
+            *state.get("decision_log", []),
+            {
+                "agent": "profile_analyzer",
+                "message": "Athlete profile analyzed",
+                "sports": profile.primary_sports,
+            },
+        ],
     }
-    state.decision_log.append({"agent": "briefing", "message": "Briefings generated"})
-    return state
+
+
+async def planning_node(state: CoachState) -> dict:
+    logger.info(
+        "node planning start user_id=%s previous_attempt=%d",
+        state["goal"].user_id,
+        state.get("generation_attempt", 0),
+    )
+    previous_plan = state.get("plan")
+    previous_validation = state.get("validation")
+
+    errors = None
+    if previous_validation:
+        errors = [issue.model_dump(mode="json") for issue in previous_validation.issues]
+
+    plan = await generate_training_plan(
+        goal=state["goal"],
+        athlete_profile=state["athlete_profile"],
+        raw_data=state.get("raw_data", {}),
+        previous_plan=previous_plan,
+        validation_errors=errors,
+    )
+
+    attempt = state.get("generation_attempt", 0) + 1
+    logger.info(
+        "node planning done user_id=%s attempt=%d sessions=%d",
+        state["goal"].user_id,
+        attempt,
+        len(plan.sessions),
+    )
+
+    return {
+        "plan": plan,
+        "generation_attempt": attempt,
+        "decision_log": [
+            *state.get("decision_log", []),
+            {
+                "agent": "planner",
+                "message": "Training plan generated",
+                "attempt": attempt,
+                "session_count": len(plan.sessions),
+            },
+        ],
+    }
+
+
+def validation_node(state: CoachState) -> dict:
+    logger.info("node validation start user_id=%s", state["goal"].user_id)
+    validation = validate_plan(
+        goal=state["goal"],
+        plan=state["plan"],
+    )
+    error_count = sum(issue.severity == "error" for issue in validation.issues)
+    logger.info(
+        "node validation done user_id=%s valid=%s issues=%d errors=%d",
+        state["goal"].user_id,
+        validation.valid,
+        len(validation.issues),
+        error_count,
+    )
+
+    return {
+        "validation": validation,
+        "decision_log": [
+            *state.get("decision_log", []),
+            {
+                "agent": "validator",
+                "message": "Plan validated",
+                "valid": validation.valid,
+                "issues": len(validation.issues),
+            },
+        ],
+    }
+
+
+def route_after_validation(state: CoachState) -> str:
+    validation = state["validation"]
+
+    if validation.valid:
+        logger.info("route validation->briefing user_id=%s", state["goal"].user_id)
+        return "briefing"
+
+    if state.get("generation_attempt", 0) >= state.get("max_generation_attempts", 3):
+        logger.info("route validation->fallback user_id=%s", state["goal"].user_id)
+        return "fallback"
+
+    logger.info("route validation->planning user_id=%s", state["goal"].user_id)
+    return "planning"
+
+
+def fallback_node(state: CoachState) -> dict:
+    logger.warning(
+        "node fallback reached user_id=%s attempts=%d",
+        state["goal"].user_id,
+        state.get("generation_attempt", 0),
+    )
+    return {
+        "safety": {
+            "status": "manual_review_required",
+            "message": (
+                "Le programme n'a pas pu satisfaire toutes les regles "
+                "apres plusieurs tentatives."
+            ),
+        },
+        "decision_log": [
+            *state.get("decision_log", []),
+            {
+                "agent": "fallback",
+                "message": "Manual review required after retries",
+            },
+        ],
+    }
+
+
+async def briefing_node(state: CoachState) -> dict:
+    logger.info("node briefing start user_id=%s", state["goal"].user_id)
+    plan = state["plan"]
+    first_session = plan.sessions[0] if plan.sessions else None
+
+    athlete_message = (
+        "Ton programme a ete cree."
+        if first_session is None
+        else (
+            f"Ta premiere seance est '{first_session.title}', "
+            f"prevue le {first_session.session_date.isoformat()} "
+            f"pour environ {first_session.duration_min} minutes."
+        )
+    )
+
+    return {
+        "briefing": {
+            "athlete": athlete_message,
+            "coach": f"{len(plan.sessions)} seances generees. Strategie: {plan.strategy}",
+        },
+        "safety": {
+            "status": "validated",
+            "disclaimer": "Ces recommandations ne remplacent pas un avis medical.",
+        },
+    }
 
 
 def build_graph():
-    graph = StateGraph(CoachState)
-    graph.add_node("intake", intake_node)
-    graph.add_node("sync", sync_node)
-    graph.add_node("quality", quality_node)
-    graph.add_node("context", context_node)
-    graph.add_node("planning", planning_node)
-    graph.add_node("safety", safety_node)
-    graph.add_node("briefing", briefing_node)
+    builder = StateGraph(CoachState)
 
-    graph.set_entry_point("intake")
-    graph.add_edge("intake", "sync")
-    graph.add_edge("sync", "quality")
-    graph.add_edge("quality", "context")
-    graph.add_edge("context", "planning")
-    graph.add_edge("planning", "safety")
-    graph.add_edge("safety", "briefing")
-    graph.add_edge("briefing", END)
+    builder.add_node("sync", sync_node)
+    builder.add_node("profile", profile_node)
+    builder.add_node("planning", planning_node)
+    builder.add_node("validation", validation_node)
+    builder.add_node("fallback", fallback_node)
+    builder.add_node("briefing", briefing_node)
 
-    return graph.compile()
+    builder.add_edge(START, "sync")
+    builder.add_edge("sync", "profile")
+    builder.add_edge("profile", "planning")
+    builder.add_edge("planning", "validation")
+
+    builder.add_conditional_edges(
+        "validation",
+        route_after_validation,
+        {
+            "planning": "planning",
+            "briefing": "briefing",
+            "fallback": "fallback",
+        },
+    )
+
+    builder.add_edge("briefing", END)
+    builder.add_edge("fallback", END)
+
+    return builder.compile()
 
 
-def run_planning(goal: GoalInput) -> CoachState:
-    app = build_graph()
-    initial_state = CoachState(goal)
-    return app.invoke(initial_state)
+graph = build_graph()
+
+
+async def run_planning(goal: GoalInput) -> CoachState:
+    logger.info("run_planning start user_id=%s", goal.user_id)
+    initial_state: CoachState = {
+        "goal": goal,
+        "raw_data": {},
+        "generation_attempt": 0,
+        "max_generation_attempts": 3,
+        "decision_log": [],
+    }
+
+    result = await graph.ainvoke(initial_state)
+    logger.info(
+        "run_planning done user_id=%s final_valid=%s",
+        goal.user_id,
+        result.get("validation").valid if result.get("validation") else None,
+    )
+    return result
