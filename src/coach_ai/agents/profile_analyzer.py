@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 from coach_ai.config import get_settings
 from coach_ai.llm import get_model
 from coach_ai.models import AthleteProfile, GoalInput
+
+logger = logging.getLogger("coach_ai.main")
 
 SYSTEM_PROMPT = """
 Tu es un coach sportif expert en planification d'entrainement.
@@ -35,6 +38,15 @@ async def analyze_athlete(goal: GoalInput, raw_data: dict[str, Any]) -> AthleteP
         "goal": goal.model_dump(mode="json"),
         "connected_data": raw_data,
     }
+
+    logger.info(
+        "analyze_athlete start user_id=%s deadline=%s payload=%s model=%s settings=%s",
+        goal.user_id,
+        goal.deadline.isoformat(),
+        payload,
+        model,
+        settings,
+    )
 
     return await asyncio.wait_for(
         model.ainvoke(
