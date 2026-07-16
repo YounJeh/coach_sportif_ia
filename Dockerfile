@@ -10,15 +10,21 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /uvx /bin/
 
+# Cette couche ne change que si les dépendances changent
 COPY pyproject.toml uv.lock README.md ./
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+RUN uv sync \
+    --frozen \
+    --no-dev \
+    --no-install-project
 
+# Le code est copié après l'installation des dépendances
 COPY src ./src
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+# Installation du projet uniquement
+RUN uv sync \
+    --frozen \
+    --no-dev
 
 EXPOSE 8080
 
