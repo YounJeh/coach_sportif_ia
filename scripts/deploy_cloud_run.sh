@@ -6,7 +6,17 @@ MODE="${1:-all}"
 PROJECT_ID="${PROJECT_ID:-projet-coach-sportif-ia}"
 REGION="${REGION:-europe-west1}"
 SERVICE_NAME="${SERVICE_NAME:-coach-sportif-ia-api}"
-IMAGE="${IMAGE:-gcr.io/${PROJECT_ID}/${SERVICE_NAME}:$(date +%Y%m%d-%H%M%S)}"
+
+# Même dépôt pour toutes les versions.
+IMAGE_REPOSITORY="${IMAGE_REPOSITORY:-gcr.io/${PROJECT_ID}/${SERVICE_NAME}}"
+
+# Une image unique pour chaque déploiement.
+IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d-%H%M%S)}"
+IMAGE="${IMAGE:-${IMAGE_REPOSITORY}:${IMAGE_TAG}}"
+
+# Tag stable utilisé comme cache au build suivant.
+CACHE_IMAGE="${CACHE_IMAGE:-${IMAGE_REPOSITORY}:latest}"
+
 SERVICE_ACCOUNT_NAME="${SERVICE_ACCOUNT_NAME:-coach-sportif-ia-api-sa}"
 SECRET_PREFIX="${SECRET_PREFIX:-coach-api}"
 ALLOW_UNAUTH="${ALLOW_UNAUTH:-true}"
@@ -47,6 +57,7 @@ if [[ "$MODE" == "init" || "$MODE" == "all" ]]; then
     run.googleapis.com \
     cloudbuild.googleapis.com \
     secretmanager.googleapis.com \
+    containerregistry.googleapis.com \
     --project "$PROJECT_ID"
 
   PROJECT_NUMBER="$(
@@ -83,20 +94,33 @@ fi
 
 if [[ "$MODE" == "deploy" || "$MODE" == "all" ]]; then
   echo "Build de l'image : $IMAGE"
+  echo "Image utilisée comme cache : $CACHE_IMAGE"
 
   gcloud builds submit \
     --config cloudbuild.yaml \
-    --substitutions "_IMAGE=$IMAGE" \
+    --substitutions "_IMAGE=${IMAGE},_CACHE_IMAGE=${CACHE_IMAGE}" \
     --project "$PROJECT_ID" \
     .
 
   echo "Déploiement Cloud Run..."
 
-  gcloud run deploy "$SERVICE_NAME" \
-    --image "$IMAGE" \
-    --region "$REGION" \
-    --platform managed \
+  DEPLOY_ARGS=(
+    gcloud run deploy "$SERVICE_NAME"
+    --image "$IMAGE"
+    --region "$REGION"
+    --platform managed
     --project "$PROJECT_ID"
+    --service-account "$SERVICE_ACCOUNT_EMAIL"
+    --quiet
+  )
+
+  if [[ "$ALLOW_UNAUTH" == "true" ]]; then
+    DEPLOY_ARGS+=(--allow-unauthenticated)
+  else
+    DEPLOY_ARGS+=(--no-allow-unauthenticated)
+  fi
+
+  "${DEPLOY_ARGS[@]}"
 
   URL="$(
     gcloud run services describe "$SERVICE_NAME" \
@@ -105,7 +129,10 @@ if [[ "$MODE" == "deploy" || "$MODE" == "all" ]]; then
       --format="value(status.url)"
   )"
 
+  echo
   echo "Déploiement terminé"
+  echo "Image déployée : $IMAGE"
+  echo "Cache mis à jour : $CACHE_IMAGE"
   echo "Service URL : $URL"
   echo "Health : $URL/health"
 fi

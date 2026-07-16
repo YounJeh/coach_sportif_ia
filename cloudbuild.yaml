@@ -1,9 +1,40 @@
 steps:
-  - name: gcr.io/cloud-builders/docker
+  # Récupère l'image précédente pour utiliser ses couches comme cache.
+  # Le premier build continuera normalement si l'image n'existe pas encore.
+  - id: "pull-cache"
+    name: "gcr.io/cloud-builders/docker"
+    entrypoint: "bash"
     args:
-      - build
-      - -t
-      - ${_IMAGE}
-      - .
-images:
-  - ${_IMAGE}
+      - "-c"
+      - |
+        docker pull "${_CACHE_IMAGE}" || true
+
+  # Construit la nouvelle image en utilisant l'image précédente comme cache.
+  - id: "build"
+    name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "--cache-from"
+      - "${_CACHE_IMAGE}"
+      - "--tag"
+      - "${_IMAGE}"
+      - "--tag"
+      - "${_CACHE_IMAGE}"
+      - "."
+
+  # Envoie l'image horodatée.
+  - id: "push-version"
+    name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "${_IMAGE}"
+
+  # Met à jour latest pour le prochain build.
+  - id: "push-cache"
+    name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "${_CACHE_IMAGE}"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

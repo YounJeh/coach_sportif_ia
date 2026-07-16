@@ -1,14 +1,24 @@
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
+COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /uvx /bin/
+
+COPY pyproject.toml uv.lock README.md ./
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
 COPY src ./src
 
-RUN pip install --no-cache-dir .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
 EXPOSE 8080
 
