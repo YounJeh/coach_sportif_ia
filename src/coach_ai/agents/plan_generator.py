@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import date
 from typing import Any
 
 from coach_ai.config import get_settings
 from coach_ai.llm import get_model
 from coach_ai.models import AthleteProfile, GoalInput, TrainingPlan
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """
 Tu es un planificateur sportif multidisciplinaire.
@@ -49,6 +52,8 @@ async def generate_training_plan(
         "previous_plan": previous_plan.model_dump(mode="json") if previous_plan else None,
         "validation_errors": validation_errors or [],
     }
+
+    logger.info(f"payload for training plan generation: {json.dumps(payload, ensure_ascii=False, default=str)}")
 
     instruction = (
         "Genere le programme sportif."
