@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import date
 import logging
 import os
 import sys
 
 from fastapi import FastAPI
-from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -62,13 +60,13 @@ class GoalRequest(BaseModel):
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
+def health() -> dict[str, str]:
     logger.info("health requested")
     return {"status": "ok", "env": settings.app_env}
 
 
 @app.post("/v1/plan")
-async def generate_plan(payload: GoalRequest) -> dict:
+def generate_plan(payload: GoalRequest) -> dict:
     logger.info(
         "plan request received user_id=%s deadline=%s slots=%d",
         payload.user_id,
@@ -77,10 +75,7 @@ async def generate_plan(payload: GoalRequest) -> dict:
     )
 
     try:
-        result = await asyncio.wait_for(
-            run_planning(GoalInput.model_validate(payload.model_dump())),
-            timeout=settings.planning_timeout_sec,
-        )
+        result = run_planning(GoalInput.model_validate(payload.model_dump()))
 
         plan = result["plan"] if "plan" in result else None
         athlete_profile = result["athlete_profile"] if "athlete_profile" in result else None
@@ -99,12 +94,6 @@ async def generate_plan(payload: GoalRequest) -> dict:
             "profile": athlete_profile.model_dump(mode="json") if athlete_profile else None,
             "decision_log": decision_log,
         }
-    except asyncio.TimeoutError as exc:
-        logger.exception("plan request timeout user_id=%s", payload.user_id)
-        raise HTTPException(
-            status_code=504,
-            detail="Plan generation timed out. Please retry.",
-        ) from exc
     except Exception:
         logger.exception("plan request failed user_id=%s", payload.user_id)
         raise

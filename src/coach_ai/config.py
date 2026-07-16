@@ -10,8 +10,6 @@ class Settings(BaseSettings):
 
     llm_provider: str = Field(default="vertex", alias="LLM_PROVIDER")
     planning_model: str = Field(default="openai:gpt-5-mini", alias="PLANNING_MODEL")
-    llm_timeout_sec: float = Field(default=20.0, alias="LLM_TIMEOUT_SEC")
-    planning_timeout_sec: float = Field(default=45.0, alias="PLANNING_TIMEOUT_SEC")
     gcp_project_id: str = Field(default="", alias="GCP_PROJECT_ID")
     gcp_location: str = Field(default="europe-west1", alias="GCP_LOCATION")
 

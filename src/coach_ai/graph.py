@@ -13,9 +13,9 @@ from coach_ai.state import CoachState
 logger = logging.getLogger(__name__)
 
 
-async def profile_node(state: CoachState) -> dict:
+def profile_node(state: CoachState) -> dict:
     logger.info("node profile start user_id=%s", state["goal"].user_id)
-    profile = await analyze_athlete(goal=state["goal"])
+    profile = analyze_athlete(goal=state["goal"])
 
     logger.info(
         "node profile done user_id=%s primary_sports=%s profile=%s",
@@ -37,12 +37,12 @@ async def profile_node(state: CoachState) -> dict:
     }
 
 
-async def planning_node(state: CoachState) -> dict:
+def planning_node(state: CoachState) -> dict:
     logger.info("node planning start user_id=%s", state["goal"].user_id)
     if "athlete_profile" not in state:
         raise ValueError("athlete_profile missing from state")
 
-    plan = await generate_training_plan(
+    plan = generate_training_plan(
         goal=state["goal"],
         athlete_profile=state["athlete_profile"],
     )
@@ -81,14 +81,14 @@ def build_graph():
 graph = build_graph()
 
 
-async def run_planning(goal: GoalInput) -> CoachState:
+def run_planning(goal: GoalInput) -> CoachState:
     logger.info("run_planning start user_id=%s", goal.user_id)
     initial_state: CoachState = {
         "goal": goal,
         "decision_log": [],
     }
 
-    result = cast(CoachState, await graph.ainvoke(initial_state))
+    result = cast(CoachState, graph.invoke(initial_state))
     if "plan" not in result:
         raise ValueError("plan missing from final state")
 

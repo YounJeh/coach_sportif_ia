@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 
-from coach_ai.config import get_settings
 from coach_ai.llm import get_model
 from coach_ai.models import AthleteProfile, GoalInput
 
@@ -26,9 +24,8 @@ Tu ne generes pas encore les seances.
 """.strip()
 
 
-async def analyze_athlete(goal: GoalInput) -> AthleteProfile:
+def analyze_athlete(goal: GoalInput) -> AthleteProfile:
     model = get_model().with_structured_output(AthleteProfile, method="function_calling")
-    settings = get_settings()
 
     payload = {
         "goal": goal.model_dump(mode="json"),
@@ -40,21 +37,18 @@ async def analyze_athlete(goal: GoalInput) -> AthleteProfile:
         goal.deadline.isoformat(),
         payload,
         model,
-        settings,
+        "timeouts_disabled",
     )
 
-    result = await asyncio.wait_for(
-        model.ainvoke(
-            [
-                ("system", SYSTEM_PROMPT),
-                (
-                    "user",
-                    "Analyse ce profil sportif :\n"
-                    + json.dumps(payload, ensure_ascii=False, default=str),
-                ),
-            ]
-        ),
-        timeout=settings.llm_timeout_sec,
+    result = model.invoke(
+        [
+            ("system", SYSTEM_PROMPT),
+            (
+                "user",
+                "Analyse ce profil sportif :\n"
+                + json.dumps(payload, ensure_ascii=False, default=str),
+            ),
+        ]
     )
 
     if isinstance(result, AthleteProfile):

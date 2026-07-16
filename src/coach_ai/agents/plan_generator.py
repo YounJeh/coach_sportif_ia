@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from datetime import date
@@ -23,9 +22,7 @@ Principes obligatoires :
 - ne pas presenter de conseil medical ;
 - expliciter les hypotheses dans assumptions.
 """.strip()
-
-
-async def generate_training_plan(
+def generate_training_plan(
     goal: GoalInput,
     athlete_profile: AthleteProfile,
 ) -> TrainingPlan:
@@ -39,17 +36,14 @@ async def generate_training_plan(
 
     logger.info(f"payload for training plan generation: {json.dumps(payload, ensure_ascii=False, default=str)}")
 
-    result = await asyncio.wait_for(
-        model.ainvoke(
-            [
-                ("system", SYSTEM_PROMPT),
-                (
-                    "user",
-                    "Genere un planning sportif de 2 seances." + "\n\n" + json.dumps(payload, ensure_ascii=False, default=str),
-                ),
-            ]
-        ),
-        timeout=300,
+    result = model.invoke(
+        [
+            ("system", SYSTEM_PROMPT),
+            (
+                "user",
+                "Genere un planning sportif de 2 seances." + "\n\n" + json.dumps(payload, ensure_ascii=False, default=str),
+            ),
+        ]
     )
 
     if isinstance(result, TrainingPlan):
