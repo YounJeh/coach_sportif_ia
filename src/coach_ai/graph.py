@@ -6,45 +6,17 @@ from typing import cast
 from langgraph.graph import END, START, StateGraph
 
 from coach_ai.agents.plan_generator import generate_training_plan
-from coach_ai.agents.profile_analyzer import analyze_athlete
 from coach_ai.models import GoalInput
 from coach_ai.state import CoachState
 
 logger = logging.getLogger(__name__)
 
 
-def profile_node(state: CoachState) -> dict:
-    logger.info("node profile start user_id=%s", state["goal"].user_id)
-    profile = analyze_athlete(goal=state["goal"])
-
-    logger.info(
-        "node profile done user_id=%s primary_sports=%s profile=%s",
-        state["goal"].user_id,
-        profile.primary_sports,
-        profile,
-    )
-
-    return {
-        "athlete_profile": profile,
-        "decision_log": [
-            *state.get("decision_log", []),
-            {
-                "agent": "profile_analyzer",
-                "message": "Athlete profile analyzed",
-                "sports": profile.primary_sports,
-            },
-        ],
-    }
-
-
 def planning_node(state: CoachState) -> dict:
     logger.info("node planning start user_id=%s", state["goal"].user_id)
-    if "athlete_profile" not in state:
-        raise ValueError("athlete_profile missing from state")
 
     plan = generate_training_plan(
         goal=state["goal"],
-        athlete_profile=state["athlete_profile"],
     )
     logger.info(
         "node planning done user_id=%s sessions=%d",
@@ -68,11 +40,9 @@ def planning_node(state: CoachState) -> dict:
 def build_graph():
     builder = StateGraph(CoachState)
 
-    builder.add_node("profile", profile_node)
     builder.add_node("planning", planning_node)
 
-    builder.add_edge(START, "profile")
-    builder.add_edge("profile", "planning")
+    builder.add_edge(START, "planning")
     builder.add_edge("planning", END)
 
     return builder.compile()

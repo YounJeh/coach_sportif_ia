@@ -17,14 +17,6 @@ class GoalInput(BaseModel):
     max_session_duration_min: int | None = Field(default=None, ge=10, le=300)
 
 
-class AthleteProfile(BaseModel):
-    objective_summary: str
-    primary_sports: list[str]
-    current_level: str
-    constraints: list[str] = Field(default_factory=list)
-    assumptions: list[str] = Field(default_factory=list)
-
-
 class PlannedSession(BaseModel):
     session_date: date
     title: str

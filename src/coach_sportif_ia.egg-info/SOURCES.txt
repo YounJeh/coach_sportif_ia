@@ -9,7 +9,6 @@ src/coach_ai/models.py
 src/coach_ai/state.py
 src/coach_ai/agents/__init__.py
 src/coach_ai/agents/plan_generator.py
-src/coach_ai/agents/profile_analyzer.py
 src/coach_ai/services/__init__.py
 src/coach_ai/services/plan_validator.py
 src/coach_sportif_ia.egg-info/PKG-INFO

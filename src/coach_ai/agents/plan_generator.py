@@ -5,7 +5,7 @@ import logging
 from datetime import date
 
 from coach_ai.llm import get_model
-from coach_ai.models import AthleteProfile, GoalInput, TrainingPlan
+from coach_ai.models import GoalInput, TrainingPlan
 
 logger = logging.getLogger(__name__)
 
@@ -24,14 +24,12 @@ Principes obligatoires :
 """.strip()
 def generate_training_plan(
     goal: GoalInput,
-    athlete_profile: AthleteProfile,
 ) -> TrainingPlan:
     model = get_model().with_structured_output(TrainingPlan, method="function_calling")
 
     payload = {
         "today": date.today().isoformat(),
         "goal": goal.model_dump(mode="json"),
-        "athlete_profile": athlete_profile.model_dump(mode="json"),
     }
 
     logger.info(f"payload for training plan generation: {json.dumps(payload, ensure_ascii=False, default=str)}")

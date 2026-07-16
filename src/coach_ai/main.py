@@ -78,7 +78,6 @@ def generate_plan(payload: GoalRequest) -> dict:
         result = run_planning(GoalInput.model_validate(payload.model_dump()))
 
         plan = result["plan"] if "plan" in result else None
-        athlete_profile = result["athlete_profile"] if "athlete_profile" in result else None
         decision_log = result["decision_log"]
 
         logger.info(
@@ -91,7 +90,6 @@ def generate_plan(payload: GoalRequest) -> dict:
 
         return {
             "plan": plan.model_dump(mode="json") if plan else None,
-            "profile": athlete_profile.model_dump(mode="json") if athlete_profile else None,
             "decision_log": decision_log,
         }
     except Exception:
