@@ -41,7 +41,7 @@ async def generate_training_plan(
     previous_plan: TrainingPlan | None = None,
     validation_errors: list[dict[str, Any]] | None = None,
 ) -> TrainingPlan:
-    model = get_model().with_structured_output(TrainingPlan, method="function_calling")
+    model = get_model() # .with_structured_output(TrainingPlan, method="function_calling")
     settings = get_settings()
 
     payload = {
@@ -71,5 +71,5 @@ async def generate_training_plan(
                 ),
             ]
         ),
-        timeout=settings.llm_timeout_sec,
+        timeout=300,  # settings.llm_timeout_sec,
     )
