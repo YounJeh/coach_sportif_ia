@@ -82,28 +82,21 @@ async def generate_plan(payload: GoalRequest) -> dict:
             timeout=settings.planning_timeout_sec,
         )
 
-        plan = result.get("plan")
-        validation = result.get("validation")
-        decision_log = result.get("decision_log", [])
+        plan = result["plan"] if "plan" in result else None
+        athlete_profile = result["athlete_profile"] if "athlete_profile" in result else None
+        decision_log = result["decision_log"]
 
         logger.info(
-            "plan request completed user_id=%s plan_generated=%s valid=%s decision_log=%d",
+            "plan request completed user_id=%s plan_generated=%s sessions=%d decision_log=%d",
             payload.user_id,
             bool(plan),
-            validation.valid if validation else None,
+            len(plan.sessions) if plan else 0,
             len(decision_log),
         )
 
         return {
             "plan": plan.model_dump(mode="json") if plan else None,
-            "profile": (
-                result["athlete_profile"].model_dump(mode="json")
-                if result.get("athlete_profile")
-                else None
-            ),
-            "validation": validation.model_dump(mode="json") if validation else None,
-            "briefing": result.get("briefing", {}),
-            "safety": result.get("safety", {}),
+            "profile": athlete_profile.model_dump(mode="json") if athlete_profile else None,
             "decision_log": decision_log,
         }
     except asyncio.TimeoutError as exc:

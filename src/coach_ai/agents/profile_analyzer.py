@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
 
 from coach_ai.config import get_settings
 from coach_ai.llm import get_model
@@ -14,29 +13,25 @@ logger = logging.getLogger("coach_ai.main")
 SYSTEM_PROMPT = """
 Tu es un coach sportif expert en planification d'entrainement.
 
-Analyse l'objectif de l'athlete et ses donnees disponibles.
+Analyse uniquement la demande de l'athlete.
 
 Tu dois :
-- identifier la nature reelle de l'objectif ;
-- determiner les sports et modalites pertinents ;
-- evaluer le niveau probable ;
-- identifier les contraintes ;
-- estimer une frequence realiste ;
-- signaler explicitement toute hypothese ;
-- ne jamais inventer de blessure, de performance ou de disponibilite ;
-- rester conservateur lorsque les donnees sont insuffisantes.
+- remplir un profil minimal avec:
+    objective_summary, primary_sports, current_level, constraints, assumptions ;
+- proposer 1 a 2 sports principaux adaptes ;
+- rester prudent quand l'information manque ;
+- ne jamais inventer des faits de sante.
 
 Tu ne generes pas encore les seances.
 """.strip()
 
 
-async def analyze_athlete(goal: GoalInput, raw_data: dict[str, Any]) -> AthleteProfile:
+async def analyze_athlete(goal: GoalInput) -> AthleteProfile:
     model = get_model().with_structured_output(AthleteProfile, method="function_calling")
     settings = get_settings()
 
     payload = {
         "goal": goal.model_dump(mode="json"),
-        "connected_data": raw_data,
     }
 
     logger.info(
@@ -48,7 +43,7 @@ async def analyze_athlete(goal: GoalInput, raw_data: dict[str, Any]) -> AthleteP
         settings,
     )
 
-    return await asyncio.wait_for(
+    result = await asyncio.wait_for(
         model.ainvoke(
             [
                 ("system", SYSTEM_PROMPT),
@@ -61,3 +56,8 @@ async def analyze_athlete(goal: GoalInput, raw_data: dict[str, Any]) -> AthleteP
         ),
         timeout=settings.llm_timeout_sec,
     )
+
+    if isinstance(result, AthleteProfile):
+        return result
+
+    return AthleteProfile.model_validate(result)

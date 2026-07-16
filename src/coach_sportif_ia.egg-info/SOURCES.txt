@@ -2,7 +2,6 @@ README.md
 pyproject.toml
 src/coach_ai/__init__.py
 src/coach_ai/config.py
-src/coach_ai/connectors.py
 src/coach_ai/graph.py
 src/coach_ai/llm.py
 src/coach_ai/main.py
