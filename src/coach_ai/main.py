@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 import logging
+import os
+import sys
 
 from fastapi import FastAPI
 from fastapi import HTTPException
@@ -12,6 +14,13 @@ from pydantic import BaseModel, Field
 from coach_ai.config import get_settings
 from coach_ai.graph import run_planning
 from coach_ai.models import GoalInput
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
 
 logger = logging.getLogger(__name__)
 
