@@ -50,10 +50,11 @@ async def profile_node(state: CoachState) -> dict:
     )
 
     logger.info(
-        "node profile done user_id=%s primary_sports=%s missing_info=%d",
+        "node profile done user_id=%s primary_sports=%s missing_info=%d profile=%s",
         state["goal"].user_id,
         profile.primary_sports,
         len(profile.missing_information),
+        profile,
     )
 
     return {
