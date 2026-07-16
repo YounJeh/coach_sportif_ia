@@ -18,7 +18,11 @@ Tu dois produire un planning de exactement 2 seances individualisees et executab
 def generate_training_plan(
     goal: GoalInput,
 ) -> TrainingPlan:
-    model = get_model().with_structured_output(TrainingPlan, method="function_calling")
+    model = get_model().with_structured_output(
+        TrainingPlan,
+        method="json_schema",
+        strict=True,
+    )
 
     payload = {
         "today": date.today().isoformat(),
