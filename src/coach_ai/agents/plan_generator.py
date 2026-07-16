@@ -13,15 +13,8 @@ SYSTEM_PROMPT = """
 Tu es un agent planificateur sportif minimaliste.
 
 Tu dois produire un planning de exactement 2 seances individualisees et executables.
-
-Principes obligatoires :
-- produire exactement 2 objets dans sessions, ni plus ni moins ;
-- respecter les disponibilites et les jours exclus ;
-- adapter les seances au niveau et aux contraintes ;
-- pour chaque seance fournir: session_date, title, sport, objective, duration_min, intensity, notes ;
-- ne pas presenter de conseil medical ;
-- expliciter les hypotheses dans assumptions.
 """.strip()
+
 def generate_training_plan(
     goal: GoalInput,
 ) -> TrainingPlan:
