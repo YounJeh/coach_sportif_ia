@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     llm_provider: str = Field(default="vertex", alias="LLM_PROVIDER")
-    planning_model: str = Field(default="openai:gpt-5-mini", alias="PLANNING_MODEL")
+    planning_model: str = Field(default="gpt-5-mini", alias="PLANNING_MODEL")
     gcp_project_id: str = Field(default="", alias="GCP_PROJECT_ID")
     gcp_location: str = Field(default="europe-west1", alias="GCP_LOCATION")
 

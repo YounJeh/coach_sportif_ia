@@ -9,12 +9,6 @@ from coach_ai.config import get_settings
 T = TypeVar("T", bound=BaseModel)
 
 
-def _normalize_openai_model_name(model_name: str) -> str:
-    if model_name.startswith("openai:"):
-        return model_name.split(":", 1)[1]
-    return model_name
-
-
 @lru_cache(maxsize=1)
 def get_openai_client() -> OpenAI:
     return OpenAI()
@@ -30,7 +24,7 @@ def parse_to_format(
     settings = get_settings()
 
     response = get_openai_client().responses.parse(
-        model=_normalize_openai_model_name(settings.planning_model),
+        model=settings.planning_model,
         instructions=system_prompt,
         input=input_text,
         text_format=output_structure,

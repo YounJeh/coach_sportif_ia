@@ -29,4 +29,5 @@ def generate_training_plan(
         input_text="Genere un planning sportif de 2 seances." + "\n\n" + json.dumps(payload, ensure_ascii=False, default=str),
         output_structure=TrainingPlan,
         system_prompt=SYSTEM_PROMPT,
+        reasoning={"effort": "minimal"},
     )
