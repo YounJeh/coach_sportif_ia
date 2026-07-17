@@ -13,6 +13,7 @@ Requires-Dist: langgraph>=0.2.0
 Requires-Dist: langchain>=0.3.0
 Requires-Dist: langchain-core>=0.3.0
 Requires-Dist: langchain-openai>=0.3.0
+Requires-Dist: openai>=2.45.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8.3.0; extra == "dev"
 Requires-Dist: httpx>=0.27.0; extra == "dev"
@@ -32,14 +33,19 @@ Orchestration multi-agents avec LangGraph pour generer et adapter un programme s
 ## Architecture MVP
 
 - API Cloud Run (FastAPI)
-- Orchestrateur LangGraph minimal (profil -> planification)
-- Generation d'un planning de 2 seances
+- Orchestrateur LangGraph (pipeline agents)
+- Connecteurs MCP/adaptateurs (Strava, Garmin, Calendar)
+- Safety policy pour limiter les recommandations a risque
 
 Flux principal:
 
-1. Intake objectif + contraintes
-2. Analyse minimale du profil
-3. Generation du plan (2 seances)
+1. Intake objectif + deadline + contraintes
+2. Synchronisation des donnees
+3. Score qualite des sources
+4. Construction du contexte
+5. Planification 7 jours
+6. Filtre safety
+7. Briefing coach et athlete
 
 ## Demarrage local
 
